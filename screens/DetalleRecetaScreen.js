@@ -236,6 +236,32 @@ export default function DetalleRecetaScreen({ route, navigation }) {
         </View>
       </View>
 
+      <View style={styles.lifeCard}>
+        <View style={styles.lifeHeader}>
+          <Ionicons
+            name="leaf-outline"
+            size={24}
+            color="#7a4a3a"
+          />
+
+          <Text style={styles.lifeTitle}>
+            Vida útil sugerida
+          </Text>
+        </View>
+
+        <Text style={styles.lifeValue}>
+          {receta.vida_util_dias || 0} días
+        </Text>
+
+        <Text style={styles.lifeSubtitle}>
+          Conservación: {receta.conservacion || 'Sin definir'}
+        </Text>
+
+        <Text style={styles.lifeHint}>
+          Esta vida útil será usada como referencia al crear producciones y calcular su fecha de vencimiento.
+        </Text>
+      </View>
+
       <View style={styles.energyCard}>
         <View style={styles.energyHeader}>
           <Ionicons
@@ -630,4 +656,47 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 16,
     },
+
+    lifeCard: {
+  backgroundColor: '#fffaf0',
+  borderRadius: 22,
+  padding: 18,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: '#ead0c3',
+},
+
+lifeHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginBottom: 10,
+},
+
+lifeTitle: {
+  fontSize: 18,
+  fontWeight: '900',
+  color: '#4a2f27',
+},
+
+lifeValue: {
+  fontSize: 28,
+  fontWeight: '900',
+  color: '#7a4a3a',
+  marginBottom: 6,
+},
+
+lifeSubtitle: {
+  fontSize: 14,
+  fontWeight: '700',
+  color: '#7a5a50',
+},
+
+lifeHint: {
+  fontSize: 12,
+  color: '#9b7b70',
+  marginTop: 8,
+  lineHeight: 17,
+},
+
 });

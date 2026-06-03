@@ -11,6 +11,8 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 
 import * as ImagePicker from 'expo-image-picker';
@@ -21,6 +23,89 @@ import {
   actualizarReceta,
 } from '../database/db';
 
+const CONSERVACIONES = [
+  {
+    id: 'Ambiente',
+    nombre: 'Ambiente',
+    descripcion: 'Producto conservado a temperatura ambiente, protegido de humedad y calor.',
+  },
+  {
+    id: 'Refrigerado',
+    nombre: 'Refrigerado',
+    descripcion: 'Producto que debe mantenerse en nevera.',
+  },
+  {
+    id: 'Congelado',
+    nombre: 'Congelado',
+    descripcion: 'Producto almacenado congelado para extender conservación.',
+  },
+  {
+    id: 'Otro',
+    nombre: 'Otro',
+    descripcion: 'Define una condición específica.',
+  },
+];
+
+const TIPOS_VIDA_UTIL = [
+  {
+    id: 'galleta_seca',
+    nombre: 'Galleta / alfajor seco',
+    conservacion: 'Ambiente',
+    dias: 7,
+    descripcion:
+      'Producto horneado, seco, sin fruta fresca ni crema perecedera.',
+  },
+  {
+    id: 'brownie',
+    nombre: 'Brownie / blondie',
+    conservacion: 'Ambiente',
+    dias: 4,
+    descripcion:
+      'Producto húmedo, pero sin crema o lácteos frescos.',
+  },
+  {
+    id: 'torta_simple',
+    nombre: 'Torta simple',
+    conservacion: 'Ambiente',
+    dias: 3,
+    descripcion:
+      'Bizcocho sin rellenos perecederos.',
+  },
+  {
+    id: 'fruta_fresca',
+    nombre: 'Con fruta fresca',
+    conservacion: 'Refrigerado',
+    dias: 2,
+    descripcion:
+      'Producto con fruta fresca o alta humedad.',
+  },
+  {
+    id: 'crema_lacteo',
+    nombre: 'Crema / queso / chantilly',
+    conservacion: 'Refrigerado',
+    dias: 3,
+    descripcion:
+      'Producto con ingredientes perecederos. Mantener refrigerado.',
+  },
+  {
+    id: 'congelado',
+    nombre: 'Congelado',
+    conservacion: 'Congelado',
+    dias: 30,
+    descripcion:
+      'Vida útil estimada por calidad, no por seguridad absoluta.',
+  },
+  {
+    id: 'manual',
+    nombre: 'Manual',
+    conservacion: '',
+    dias: 0,
+    descripcion:
+      'Define los días según experiencia de Sara.',
+  },
+];
+
+
 function parseIngredientes(valor) {
   try {
     const data = JSON.parse(valor || '[]');
@@ -28,6 +113,13 @@ function parseIngredientes(valor) {
   } catch {
     return [];
   }
+}
+
+function obtenerTipoVidaUtil(id) {
+  return (
+    TIPOS_VIDA_UTIL.find((item) => item.id === id) ||
+    TIPOS_VIDA_UTIL[0]
+  );
 }
 
 export default function FormularioRecetaScreen({ navigation, route }) {
@@ -57,8 +149,27 @@ export default function FormularioRecetaScreen({ navigation, route }) {
 
   const [instrucciones, setInstrucciones] = useState('');
 
+  const [tipoVidaUtil, setTipoVidaUtil] = useState('galleta_seca');
+  const [conservacion, setConservacion] = useState('Ambiente');
+  const [vidaUtilDias, setVidaUtilDias] = useState('7');
+  const [mostrarSelectorVidaUtil, setMostrarSelectorVidaUtil] = useState(false);
+  const [mostrarSelectorConservacion, setMostrarSelectorConservacion] = useState(false);
+  const [conservacionPersonalizada, setConservacionPersonalizada] = useState('');
+
   function marcarCambio() {
     setHayCambios(true);
+  }
+
+  function seleccionarTipoVidaUtil(tipo) {
+    setTipoVidaUtil(tipo.id);
+
+    if (tipo.conservacion) {
+      setConservacion(tipo.conservacion);
+      setConservacionPersonalizada('');
+    }
+
+    setVidaUtilDias(String(tipo.dias || ''));
+    marcarCambio();
   }
 
   useEffect(() => {
@@ -85,8 +196,40 @@ export default function FormularioRecetaScreen({ navigation, route }) {
     setIngredientes(parseIngredientes(receta.ingredientes));
     setInstrucciones(receta.instrucciones || '');
 
+    const tipoGuardado =
+      receta.tipo_vida_util || 'manual';
+
+    const conservacionFinal =
+      conservacion === 'Otro'
+        ? conservacionPersonalizada.trim()
+        : conservacion;
+
+    const tipo = obtenerTipoVidaUtil(tipoGuardado);
+
+    setTipoVidaUtil(tipoGuardado);
+    const conservacionGuardada = receta.conservacion || tipo.conservacion || 'Ambiente';
+
+      if (
+        conservacionGuardada === 'Ambiente' ||
+        conservacionGuardada === 'Refrigerado' ||
+        conservacionGuardada === 'Congelado'
+      ) {
+        setConservacion(conservacionGuardada);
+        setConservacionPersonalizada('');
+      } else {
+        setConservacion('Otro');
+        setConservacionPersonalizada(conservacionGuardada);
+      }
+    setVidaUtilDias(
+      String(
+        receta.vida_util_dias ??
+          tipo.dias ??
+          ''
+      )
+    );
+
     setHayCambios(false);
-  }, [modoEdicion, recetaId]);
+  }, [modoEdicion, recetaId, navigation]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (event) => {
@@ -126,6 +269,10 @@ export default function FormularioRecetaScreen({ navigation, route }) {
 
     return preparacion + coccion + reposo;
   }, [tiempoPreparacion, tiempoCoccion, tiempoReposo]);
+
+  const tipoSeleccionado = useMemo(() => {
+    return obtenerTipoVidaUtil(tipoVidaUtil);
+  }, [tipoVidaUtil]);
 
   async function seleccionarFoto() {
     const permisoGaleria =
@@ -207,9 +354,37 @@ export default function FormularioRecetaScreen({ navigation, route }) {
     marcarCambio();
   }
 
+
+  function obtenerConservacionFinal() {
+  if (conservacion === 'Otro') {
+    return conservacionPersonalizada.trim();
+  }
+
+  return conservacion;
+}
+
   function guardarReceta() {
     if (nombre.trim() === '') {
       Alert.alert('Campo requerido', 'Ingresa el nombre de la receta.');
+      return;
+    }
+
+    const diasVidaUtil = Number(String(vidaUtilDias).replace(',', '.')) || 0;
+    const conservacionFinal = obtenerConservacionFinal();
+
+    if (diasVidaUtil <= 0) {
+      Alert.alert(
+        'Vida útil requerida',
+        'Define los días de vida útil sugerida para esta receta.'
+      );
+      return;
+    }
+
+    if (!conservacionFinal) {
+      Alert.alert(
+        'Conservación requerida',
+        'Selecciona o escribe la forma de conservación de esta receta.'
+      );
       return;
     }
 
@@ -227,6 +402,9 @@ export default function FormularioRecetaScreen({ navigation, route }) {
       equipo_cocina: equipoCocina.trim(),
       foto_uri: fotoUri,
       video_url: videoUrl.trim(),
+      vida_util_dias: diasVidaUtil,
+      conservacion: conservacionFinal,
+      tipo_vida_util: tipoVidaUtil,
     };
 
     guardandoRef.current = true;
@@ -397,6 +575,251 @@ export default function FormularioRecetaScreen({ navigation, route }) {
             marcarCambio();
           }}
         />
+
+        <Text style={styles.sectionTitle}>Vida útil sugerida</Text>
+
+        <View style={styles.lifeInfoCard}>
+          <Text style={styles.lifeInfoTitle}>
+            Estimación conservadora
+          </Text>
+
+          <Text style={styles.lifeInfoText}>
+            Esta vida útil es una guía operativa para producción casera. Puede ajustarse con la experiencia de Sara y no reemplaza pruebas técnicas de laboratorio.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+  style={styles.lifeDropdown}
+  activeOpacity={0.85}
+  onPress={() => setMostrarSelectorVidaUtil(true)}
+>
+  <View style={{ flex: 1 }}>
+    <Text style={styles.lifeDropdownLabel}>Tipo de producto</Text>
+
+    <Text style={styles.lifeDropdownTitle}>
+      {tipoSeleccionado.nombre}
+    </Text>
+
+    <Text style={styles.lifeDropdownMeta}>
+      {conservacion || 'Sin conservación'} · {vidaUtilDias || 0} días
+    </Text>
+  </View>
+
+  <Text style={styles.lifeDropdownIcon}>⌄</Text>
+</TouchableOpacity>
+
+<Modal
+  visible={mostrarSelectorVidaUtil}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setMostrarSelectorVidaUtil(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalCard}>
+      <Text style={styles.modalTitle}>Tipo de vida útil</Text>
+
+      <Text style={styles.modalSubtitle}>
+        Selecciona una base y luego ajusta los días si lo necesitas.
+      </Text>
+
+      <ScrollView style={{ maxHeight: 420 }}>
+        {TIPOS_VIDA_UTIL.map((tipo) => {
+          const activo = tipoVidaUtil === tipo.id;
+
+          return (
+            <TouchableOpacity
+              key={tipo.id}
+              style={[
+                styles.modalOption,
+                activo && styles.modalOptionActive,
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                seleccionarTipoVidaUtil(tipo);
+                setMostrarSelectorVidaUtil(false);
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.modalOptionTitle,
+                    activo && styles.modalOptionTitleActive,
+                  ]}
+                >
+                  {tipo.nombre}
+                </Text>
+
+                <Text
+                  style={[
+                    styles.modalOptionMeta,
+                    activo && styles.modalOptionMetaActive,
+                  ]}
+                >
+                  {tipo.conservacion || 'Conservación manual'} · {tipo.dias || 'Manual'} días sugeridos
+                </Text>
+
+                <Text
+                  style={[
+                    styles.modalOptionDescription,
+                    activo && styles.modalOptionDescriptionActive,
+                  ]}
+                >
+                  {tipo.descripcion}
+                </Text>
+              </View>
+
+              {activo && (
+                <Text style={styles.modalCheck}>✓</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <TouchableOpacity
+        style={styles.modalCloseButton}
+        onPress={() => setMostrarSelectorVidaUtil(false)}
+      >
+        <Text style={styles.modalCloseText}>Cerrar</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
+
+    <Modal
+      visible={mostrarSelectorConservacion}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setMostrarSelectorConservacion(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Conservación</Text>
+
+          <Text style={styles.modalSubtitle}>
+            Selecciona cómo debe conservarse este producto.
+          </Text>
+
+          {CONSERVACIONES.map((item) => {
+            const activo = conservacion === item.id;
+
+            return (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.modalOption,
+                  activo && styles.modalOptionActive,
+                ]}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setConservacion(item.id);
+
+                  if (item.id !== 'Otro') {
+                    setConservacionPersonalizada('');
+                  }
+
+                  setMostrarSelectorConservacion(false);
+                  marcarCambio();
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.modalOptionTitle,
+                      activo && styles.modalOptionTitleActive,
+                    ]}
+                  >
+                    {item.nombre}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.modalOptionDescription,
+                      activo && styles.modalOptionDescriptionActive,
+                    ]}
+                  >
+                    {item.descripcion}
+                  </Text>
+                </View>
+
+                {activo && (
+                  <Text style={styles.modalCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+
+          <TouchableOpacity
+            style={styles.modalCloseButton}
+            onPress={() => setMostrarSelectorConservacion(false)}
+          >
+            <Text style={styles.modalCloseText}>Cerrar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
+        <Text style={styles.label}>Conservación</Text>
+
+          <TouchableOpacity
+            style={styles.lifeDropdown}
+            activeOpacity={0.85}
+            onPress={() => setMostrarSelectorConservacion(true)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.lifeDropdownLabel}>Tipo de conservación</Text>
+
+              <Text style={styles.lifeDropdownTitle}>
+                {conservacion === 'Otro'
+                  ? conservacionPersonalizada || 'Otro'
+                  : conservacion}
+              </Text>
+            </View>
+
+            <Text style={styles.lifeDropdownIcon}>⌄</Text>
+          </TouchableOpacity>
+
+          {conservacion === 'Otro' && (
+            <>
+              <Text style={styles.label}>Especificar conservación</Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Ej: ambiente en recipiente hermético"
+                value={conservacionPersonalizada}
+                onChangeText={(texto) => {
+                  setConservacionPersonalizada(texto);
+                  marcarCambio();
+                }}
+              />
+            </>
+          )}
+
+        <Text style={styles.label}>Días de vida útil sugerida</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Ej: 7"
+          keyboardType="numeric"
+          value={vidaUtilDias}
+          onChangeText={(texto) => {
+            setVidaUtilDias(texto);
+            marcarCambio();
+          }}
+        />
+
+        <View style={styles.lifeSummaryCard}>
+          <Text style={styles.lifeSummaryLabel}>
+            Configuración actual
+          </Text>
+
+          <Text style={styles.lifeSummaryValue}>
+            {conservacion || 'Sin conservación'} · {vidaUtilDias || 0} días
+          </Text>
+
+          <Text style={styles.lifeSummaryHint}>
+            Tipo: {tipoSeleccionado.nombre}
+          </Text>
+        </View>
 
         <Text style={styles.sectionTitle}>Ingredientes</Text>
 
@@ -692,6 +1115,54 @@ const styles = StyleSheet.create({
     color: '#7a4a3a',
   },
 
+  lifeInfoCard: {
+    backgroundColor: '#FFF8F3',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#ead0c3',
+    padding: 14,
+    marginBottom: 12,
+  },
+
+  lifeInfoTitle: {
+    color: '#7a4a3a',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 5,
+  },
+
+  lifeInfoText: {
+    color: '#8d6e63',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  lifeSummaryCard: {
+    backgroundColor: '#7a4a3a',
+    borderRadius: 18,
+    padding: 15,
+    marginBottom: 10,
+  },
+
+  lifeSummaryLabel: {
+    color: '#f7e8e0',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  lifeSummaryValue: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: '900',
+    marginTop: 4,
+  },
+
+  lifeSummaryHint: {
+    color: '#f7e8e0',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
   addRow: {
     flexDirection: 'row',
     gap: 10,
@@ -770,4 +1241,140 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 16,
   },
+
+  lifeDropdown: {
+  backgroundColor: 'white',
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: '#ead0c3',
+  padding: 15,
+  marginBottom: 14,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+lifeDropdownLabel: {
+  color: '#9b7b70',
+  fontSize: 12,
+  fontWeight: '800',
+  marginBottom: 4,
+},
+
+lifeDropdownTitle: {
+  color: '#4a2f27',
+  fontSize: 17,
+  fontWeight: '900',
+},
+
+lifeDropdownMeta: {
+  color: '#7a4a3a',
+  fontSize: 13,
+  fontWeight: '800',
+  marginTop: 4,
+},
+
+lifeDropdownIcon: {
+  color: '#7a4a3a',
+  fontSize: 28,
+  fontWeight: '900',
+  marginLeft: 12,
+},
+
+modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.35)',
+  justifyContent: 'center',
+  padding: 20,
+},
+
+modalCard: {
+  backgroundColor: '#fff7f5',
+  borderRadius: 24,
+  padding: 18,
+  maxHeight: '85%',
+},
+
+modalTitle: {
+  color: '#4a2f27',
+  fontSize: 22,
+  fontWeight: '900',
+},
+
+modalSubtitle: {
+  color: '#8d6e63',
+  fontSize: 13,
+  lineHeight: 18,
+  marginTop: 4,
+  marginBottom: 14,
+},
+
+modalOption: {
+  backgroundColor: 'white',
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: '#ead0c3',
+  padding: 14,
+  marginBottom: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+modalOptionActive: {
+  backgroundColor: '#7a4a3a',
+  borderColor: '#7a4a3a',
+},
+
+modalOptionTitle: {
+  color: '#4a2f27',
+  fontSize: 15,
+  fontWeight: '900',
+},
+
+modalOptionTitleActive: {
+  color: 'white',
+},
+
+modalOptionMeta: {
+  color: '#8d6e63',
+  fontSize: 12,
+  fontWeight: '800',
+  marginTop: 3,
+},
+
+modalOptionMetaActive: {
+  color: '#f7e8e0',
+},
+
+modalOptionDescription: {
+  color: '#9b7b70',
+  fontSize: 12,
+  marginTop: 5,
+  lineHeight: 17,
+},
+
+modalOptionDescriptionActive: {
+  color: '#f7e8e0',
+},
+
+modalCheck: {
+  color: 'white',
+  fontSize: 24,
+  fontWeight: '900',
+  marginLeft: 10,
+},
+
+modalCloseButton: {
+  backgroundColor: '#d9a58b',
+  padding: 14,
+  borderRadius: 16,
+  alignItems: 'center',
+  marginTop: 8,
+},
+
+modalCloseText: {
+  color: 'white',
+  fontSize: 15,
+  fontWeight: '900',
+},
+
 });

@@ -23,6 +23,7 @@ import HistoricoPedidosScreen from './screens/HistoricoPedidosScreen';
 import FinanzasScreen from './screens/FinanzasScreen';
 import MovimientosInventarioScreen from './screens/MovimientosInventarioScreen';
 import ComprobantesScreen from './screens/ComprobantesScreen';
+import PedidosCalendarioScreen from './screens/PedidosCalendarioScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -119,6 +120,15 @@ export default function App() {
           component={MovimientosInventarioScreen}
           options={{ title: 'Movimientos de inventario' }}
         />
+
+        <Stack.Screen
+          name="PedidosCalendario"
+          component={PedidosCalendarioScreen}
+          options={{
+            title: 'Calendario',
+          }}
+        />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

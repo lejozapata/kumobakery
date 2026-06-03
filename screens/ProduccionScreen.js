@@ -221,6 +221,21 @@ export default function ProduccionScreen({ navigation }) {
           </Text>
         </View>
 
+        {item.fecha_vencimiento ? (
+          <View style={styles.lifeBox}>
+            <Ionicons
+              name="calendar-outline"
+              size={16}
+              color="#8B5E4E"
+            />
+
+            <Text style={styles.lifeText}>
+              Vence: {item.fecha_vencimiento} ·{' '}
+              {item.conservacion || 'Sin conservación'}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.metricsRow}>
           <View style={styles.metricBox}>
             <Text style={styles.metricLabel}>Costo total</Text>
@@ -494,6 +509,25 @@ const styles = StyleSheet.create({
 
   unitsTextAgotada: {
     color: '#9B2C2C',
+  },
+
+  lifeBox: {
+    marginTop: 10,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#F1D6C5',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  lifeText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#7A4A3A',
+    fontWeight: '800',
   },
 
   metricsRow: {

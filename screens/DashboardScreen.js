@@ -93,6 +93,49 @@ export default function DashboardScreen({ navigation }) {
     }, [cargar])
   );
 
+  const resumenOperativo = useMemo(() => {
+    const hoyKey = obtenerFechaKey(new Date());
+    const manana = new Date();
+    manana.setDate(manana.getDate() + 1);
+    const mananaKey = obtenerFechaKey(manana);
+
+    const activos = pedidos.filter((pedido) =>
+      ['pendiente', 'en_preparacion'].includes(pedido.estado)
+    );
+
+    const entregasHoy = activos.filter((pedido) => {
+      const fecha = obtenerFecha(pedido.fecha_entrega);
+      return fecha && obtenerFechaKey(fecha) === hoyKey;
+    });
+
+    const entregasManana = activos.filter((pedido) => {
+      const fecha = obtenerFecha(pedido.fecha_entrega);
+      return fecha && obtenerFechaKey(fecha) === mananaKey;
+    });
+
+    const atrasados = activos.filter((pedido) => {
+      const fecha = obtenerFecha(pedido.fecha_entrega);
+      return fecha && obtenerFechaKey(fecha) < hoyKey;
+    });
+
+    const enPreparacion = activos.filter(
+      (pedido) => pedido.estado === 'en_preparacion'
+    );
+
+    const valorHoy = entregasHoy.reduce(
+      (total, pedido) => total + Number(pedido.total || 0),
+      0
+    );
+
+    return {
+      entregasHoy,
+      entregasManana,
+      atrasados,
+      enPreparacion,
+      valorHoy,
+    };
+  }, [pedidos]);
+
   const resumenFinanciero = useMemo(() => {
     const hoy = new Date();
     const year = hoy.getFullYear();
@@ -168,11 +211,85 @@ export default function DashboardScreen({ navigation }) {
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <Text style={styles.title}>Dashboard</Text>
+              <Text style={styles.title}>KUMO Bakery</Text>
 
               <Text style={styles.subtitle}>
-                Resumen rápido de KUMO Bakery
+                Centro operativo y resumen del negocio.
               </Text>
+            </View>
+
+            <View style={styles.todayCard}>
+              <View style={styles.todayHeader}>
+                <View>
+                  <Text style={styles.todayLabel}>Hoy</Text>
+
+                  <Text style={styles.todayTitle}>
+                    {formatearFechaCompleta(new Date())}
+                  </Text>
+                </View>
+
+                <View style={styles.todayIcon}>
+                  <Ionicons name="calendar-clear-outline" size={27} color="#FFF" />
+                </View>
+              </View>
+
+              <View style={styles.todayGrid}>
+                <TodayMetric
+                  icon="bag-handle-outline"
+                  label="Entregas hoy"
+                  value={resumenOperativo.entregasHoy.length}
+                />
+
+                <TodayMetric
+                  icon="warning-outline"
+                  label="Atrasados"
+                  value={resumenOperativo.atrasados.length}
+                  danger={resumenOperativo.atrasados.length > 0}
+                />
+
+                <TodayMetric
+                  icon="flame-outline"
+                  label="Preparación"
+                  value={resumenOperativo.enPreparacion.length}
+                />
+
+                <TodayMetric
+                  icon="cash-outline"
+                  label="Valor hoy"
+                  value={COP.format(resumenOperativo.valorHoy)}
+                  wide
+                />
+              </View>
+
+              <View style={styles.todayActions}>
+                <Pressable
+                  style={styles.todayActionPrimary}
+                  onPress={() => navigation.navigate('Pedidos')}
+                >
+                  <Ionicons name="receipt-outline" size={18} color="#FFFFFF" />
+
+                  <Text style={styles.todayActionPrimaryText}>
+                    Ver pedidos
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.todayActionSecondary}
+                  onPress={() => navigation.navigate('PedidosCalendario')}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#8B5E4E" />
+
+                  <Text style={styles.todayActionSecondaryText}>
+                    Ver calendario
+                  </Text>
+                </Pressable>
+              </View>
+
+              {resumenOperativo.entregasManana.length > 0 && (
+                <Text style={styles.tomorrowText}>
+                  Mañana tienes {resumenOperativo.entregasManana.length} entrega(s) programada(s).
+                </Text>
+              )}
             </View>
 
             <View style={styles.heroCard}>
@@ -246,6 +363,12 @@ export default function DashboardScreen({ navigation }) {
               />
 
               <QuickAction
+                icon="calendar-outline"
+                label="Calendario"
+                onPress={() => navigation.navigate('PedidosCalendario')}
+              />
+
+              <QuickAction
                 icon="cash-outline"
                 label="Finanzas"
                 onPress={() => navigation.navigate('Finanzas')}
@@ -255,12 +378,6 @@ export default function DashboardScreen({ navigation }) {
                 icon="people-outline"
                 label="Clientes"
                 onPress={() => navigation.navigate('Clientes')}
-              />
-
-              <QuickAction
-                icon="swap-horizontal-outline"
-                label="Movimientos"
-                onPress={() => navigation.navigate('MovimientosInventario')}
               />
             </View>
 
@@ -354,6 +471,26 @@ export default function DashboardScreen({ navigation }) {
   );
 }
 
+function TodayMetric({ icon, label, value, danger = false, wide = false }) {
+  return (
+    <View style={[styles.todayMetric, wide && styles.todayMetricWide]}>
+      <View style={[styles.todayMetricIcon, danger && styles.todayMetricIconDanger]}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={danger ? '#9B2C2C' : '#8B5E4E'}
+        />
+      </View>
+
+      <Text style={styles.todayMetricValue} numberOfLines={1}>
+        {value}
+      </Text>
+
+      <Text style={styles.todayMetricLabel}>{label}</Text>
+    </View>
+  );
+}
+
 function MetricCard({ icon, label, value, danger = false }) {
   return (
     <View style={[styles.metricCard, danger && styles.metricCardDanger]}>
@@ -435,11 +572,43 @@ function obtenerNombreDesdeDescripcion(item) {
 function obtenerFecha(valor) {
   if (!valor) return null;
 
-  const fecha = new Date(String(valor).replace(' ', 'T'));
+  const texto = String(valor).trim();
+
+  if (texto.includes('/')) {
+    const partes = texto.split('/');
+
+    if (partes.length === 3) {
+      const [dia, mes, anio] = partes;
+
+      const fecha = new Date(
+        Number(anio),
+        Number(mes) - 1,
+        Number(dia)
+      );
+
+      if (!Number.isNaN(fecha.getTime())) {
+        return fecha;
+      }
+    }
+  }
+
+  const fecha = new Date(texto.replace(' ', 'T'));
 
   if (Number.isNaN(fecha.getTime())) return null;
 
   return fecha;
+}
+
+function obtenerFechaKey(valor) {
+  const fecha = valor instanceof Date ? valor : obtenerFecha(valor);
+
+  if (!fecha) return '';
+
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+
+  return `${anio}-${mes}-${dia}`;
 }
 
 function formatearFechaFriendly(valor) {
@@ -448,6 +617,14 @@ function formatearFechaFriendly(valor) {
   if (!fecha) return 'Sin fecha';
 
   return `${fecha.getDate()} de ${MESES[fecha.getMonth()]}`;
+}
+
+function formatearFechaCompleta(valor) {
+  const fecha = valor instanceof Date ? valor : obtenerFecha(valor);
+
+  if (!fecha) return 'Sin fecha';
+
+  return `${fecha.getDate()} de ${MESES[fecha.getMonth()]} de ${fecha.getFullYear()}`;
 }
 
 const styles = StyleSheet.create({
@@ -481,6 +658,133 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 14,
     color: '#7A6F68',
+  },
+
+  todayCard: {
+    backgroundColor: '#3B2A24',
+    borderRadius: 26,
+    padding: 18,
+    marginBottom: 16,
+  },
+
+  todayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  todayLabel: {
+    color: '#F7EDE6',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  todayTitle: {
+    marginTop: 4,
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+
+  todayIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  todayGrid: {
+    marginTop: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  todayMetric: {
+    width: '31%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 11,
+  },
+
+  todayMetricWide: {
+    width: '100%',
+  },
+
+  todayMetricIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 12,
+    backgroundColor: '#F1E1D6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+
+  todayMetricIconDanger: {
+    backgroundColor: '#FEE2E2',
+  },
+
+  todayMetricValue: {
+    color: '#3B2A24',
+    fontSize: 19,
+    fontWeight: '900',
+  },
+
+  todayMetricLabel: {
+    marginTop: 2,
+    color: '#7A6F68',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  todayActions: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  todayActionPrimary: {
+    flex: 1,
+    backgroundColor: '#8B5E4E',
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+
+  todayActionPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  todayActionSecondary: {
+    flex: 1,
+    backgroundColor: '#FFF8F3',
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+
+  todayActionSecondaryText: {
+    color: '#8B5E4E',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  tomorrowText: {
+    marginTop: 12,
+    color: '#F7EDE6',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   heroCard: {

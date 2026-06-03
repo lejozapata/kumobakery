@@ -41,6 +41,39 @@ function formatearFecha(date) {
   return `${dia}/${mes}/${anio}`;
 }
 
+function fechaVencimientoDesdeTexto(valor) {
+  if (!valor) return null;
+
+  const partes = String(valor).split('/');
+
+  if (partes.length === 3) {
+    const [dia, mes, anio] = partes;
+    return new Date(Number(anio), Number(mes) - 1, Number(dia));
+  }
+
+  return null;
+}
+
+function produccionVenceAntesDeEntrega(produccion, fechaEntrega) {
+  if (!produccion?.fecha_vencimiento || !fechaEntrega) return false;
+
+  const vencimiento = fechaVencimientoDesdeTexto(
+    produccion.fecha_vencimiento
+  );
+
+  const entrega = fechaDesdeTexto(fechaEntrega);
+
+  if (!vencimiento || !entrega) return false;
+
+  vencimiento.setHours(0, 0, 0, 0);
+  entrega.setHours(0, 0, 0, 0);
+
+  return entrega > vencimiento;
+}
+
+
+
+
 function fechaDesdeTexto(valor) {
   if (!valor) return new Date();
 
@@ -61,6 +94,7 @@ function normalizarNumero(valor) {
 export default function FormularioPedidoScreen({ navigation, route }) {
   const pedidoId = route?.params?.pedidoId || null;
   const editando = Boolean(pedidoId);
+  const fechaPreseleccionada = route?.params?.fechaPreseleccionada;
 
   const [clientes, setClientes] = useState([]);
   const [producciones, setProducciones] = useState([]);
@@ -75,7 +109,7 @@ export default function FormularioPedidoScreen({ navigation, route }) {
   const [clienteTelefono, setClienteTelefono] = useState('');
   const [clienteDireccion, setClienteDireccion] = useState('');
 
-  const [fechaEntrega, setFechaEntrega] = useState('');
+  const [fechaEntrega, setFechaEntrega] = useState(fechaPreseleccionada || '');
   const [mostrarPickerFecha, setMostrarPickerFecha] = useState(false);
 
   const [cantidad, setCantidad] = useState('1');
@@ -288,6 +322,13 @@ export default function FormularioPedidoScreen({ navigation, route }) {
         0
     );
   }, [produccionSeleccionada]);
+
+  const productoVencidoParaEntrega = useMemo(() => {
+    return produccionVenceAntesDeEntrega(
+      produccionSeleccionada,
+      fechaEntrega
+    );
+  }, [produccionSeleccionada, fechaEntrega]);
 
   const costoUnitario = useMemo(() => {
     if (!produccionSeleccionada) return 0;
@@ -619,6 +660,20 @@ export default function FormularioPedidoScreen({ navigation, route }) {
                     >
                       Precio sugerido: {COP.format(precioProduccion)}
                     </Text>
+
+                    {!!produccion.fecha_vencimiento && (
+                      <Text
+                        style={[
+                          styles.productMeta,
+                          activa && styles.productMetaActive,
+                        ]}
+                      >
+                        Vence: {produccion.fecha_vencimiento}
+                        {produccion.conservacion
+                          ? ` · ${produccion.conservacion}`
+                          : ''}
+                      </Text>
+                    )}
                   </View>
 
                   {activa && (
@@ -652,6 +707,23 @@ export default function FormularioPedidoScreen({ navigation, route }) {
                   {COP.format(subtotalProductos)}
                 </Text>
               </View>
+              {productoVencidoParaEntrega ? (
+                <View style={styles.warningBox}>
+                  <Ionicons
+                    name="warning-outline"
+                    size={18}
+                    color="#9B2C2C"
+                  />
+
+                  <Text style={styles.warningText}>
+                    Esta producción vence el{' '}
+                    {produccionSeleccionada.fecha_vencimiento} y la entrega está
+                    programada para el {fechaEntrega}. Revisa si debes producir un lote más reciente.
+                  </Text>
+                </View>
+              ) : null}
+
+
             </View>
           )}
         </Section>
@@ -1278,5 +1350,24 @@ selectedClientName: {
   fontWeight: '900',
 },
 
+warningBox: {
+  marginTop: 10,
+  padding: 12,
+  borderRadius: 16,
+  backgroundColor: '#FFF5F5',
+  borderWidth: 1,
+  borderColor: '#F3B5B5',
+  flexDirection: 'row',
+  gap: 8,
+  alignItems: 'flex-start',
+},
+
+warningText: {
+  flex: 1,
+  color: '#9B2C2C',
+  fontSize: 13,
+  fontWeight: '700',
+  lineHeight: 18,
+},
 
 });

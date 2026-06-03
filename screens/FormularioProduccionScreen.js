@@ -43,6 +43,61 @@ function normalizarTexto(texto) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+function singularizarPalabra(palabra) {
+  if (!palabra) return '';
+
+  if (palabra.endsWith('es') && palabra.length > 4) {
+    return palabra.slice(0, -2);
+  }
+
+  if (palabra.endsWith('s') && palabra.length > 3) {
+    return palabra.slice(0, -1);
+  }
+
+  return palabra;
+}
+
+function normalizarNombreComparable(texto) {
+  return normalizarTexto(texto)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(singularizarPalabra)
+    .join(' ')
+    .trim();
+}
+
+function limpiarTextoParaMatch(texto) {
+  return normalizarNombreComparable(texto)
+    .replace(/\d+(?:[.,]\d+)?\s*(kg|g|gr|gramo|gramos|ml|l|litro|litros|unidad|unidades|docena|docenas)?/g, ' ')
+    .replace(/\b(de|del|la|el|los|las|un|una|y|con|sin)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function obtenerTokens(texto) {
+  return limpiarTextoParaMatch(texto)
+    .split(' ')
+    .filter((token) => token.length > 2);
+}
+
+function obtenerCoincidenciasInsumos(textoIngrediente, insumos) {
+  const tokensIngrediente = obtenerTokens(textoIngrediente);
+
+  if (tokensIngrediente.length === 0) return [];
+
+  return insumos.filter((insumo) => {
+    const tokensInsumo = obtenerTokens(insumo.nombre);
+
+    return tokensIngrediente.some((tokenIngrediente) =>
+      tokensInsumo.some((tokenInsumo) =>
+        tokenIngrediente === tokenInsumo ||
+        tokenIngrediente.includes(tokenInsumo) ||
+        tokenInsumo.includes(tokenIngrediente)
+      )
+    );
+  });
+}
+
 function extraerCantidadYUnidad(texto) {
   const limpio = normalizarTexto(texto);
 
@@ -71,6 +126,75 @@ function extraerCantidadYUnidad(texto) {
   };
 }
 
+function normalizarUnidad(unidad) {
+  const valor = String(unidad || '').toLowerCase();
+
+  if (valor === 'gr' || valor === 'gramos' || valor === 'gramo') return 'g';
+  if (valor === 'kg' || valor === 'kilo' || valor === 'kilos') return 'kg';
+
+  if (valor === 'ml' || valor === 'mililitro' || valor === 'mililitros') return 'ml';
+  if (valor === 'l' || valor === 'lt' || valor === 'litro' || valor === 'litros') return 'L';
+
+  if (valor === 'unidad' || valor === 'unidades') return 'unidad';
+  if (valor === 'docena' || valor === 'docenas') return 'docena';
+
+  return unidad || '';
+}
+
+function convertirCantidad(cantidad, unidadOrigen, unidadDestino) {
+  const origen = normalizarUnidad(unidadOrigen);
+  const destino = normalizarUnidad(unidadDestino);
+  const valor = Number(cantidad || 0);
+
+  if (!valor) return 0;
+  if (!origen || !destino) return valor;
+  if (origen === destino) return valor;
+
+  if (origen === 'g' && destino === 'kg') return valor / 1000;
+  if (origen === 'kg' && destino === 'g') return valor * 1000;
+
+  if (origen === 'ml' && destino === 'L') return valor / 1000;
+  if (origen === 'L' && destino === 'ml') return valor * 1000;
+
+  if (origen === 'unidad' && destino === 'docena') return valor / 12;
+  if (origen === 'docena' && destino === 'unidad') return valor * 12;
+
+  return valor;
+}
+
+function sonUnidadesCompatibles(unidadA, unidadB) {
+  const a = normalizarUnidad(unidadA);
+  const b = normalizarUnidad(unidadB);
+
+  if (!a || !b) return true;
+  if (a === b) return true;
+
+  const peso = ['g', 'kg'];
+  const volumen = ['ml', 'L'];
+  const conteo = ['unidad', 'docena'];
+
+  return (
+    (peso.includes(a) && peso.includes(b)) ||
+    (volumen.includes(a) && volumen.includes(b)) ||
+    (conteo.includes(a) && conteo.includes(b))
+  );
+}
+
+function calcularFechaVencimientoLocal(vidaUtilDias) {
+  const dias = Number(vidaUtilDias || 0);
+
+  if (dias <= 0) return '';
+
+  const fecha = new Date();
+  fecha.setDate(fecha.getDate() + dias);
+
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const anio = fecha.getFullYear();
+
+  return `${dia}/${mes}/${anio}`;
+}
+
 function extraerRendimientoNumerico(valor) {
   const match = String(valor || '').match(/\d+(?:[.,]\d+)?/);
 
@@ -86,14 +210,13 @@ function mapearIngredientesConInsumos(receta, insumos) {
     const textoIngrediente = ingrediente.texto || '';
     const textoNormalizado = normalizarTexto(textoIngrediente);
 
-    const insumoEncontrado = insumos.find((insumo) => {
-      const nombreInsumo = normalizarTexto(insumo.nombre);
+    const coincidencias = obtenerCoincidenciasInsumos(
+      textoIngrediente,
+      insumos
+    );
 
-      return (
-        textoNormalizado.includes(nombreInsumo) ||
-        nombreInsumo.includes(textoNormalizado)
-      );
-    });
+    const insumoEncontrado =
+      coincidencias.length === 1 ? coincidencias[0] : null;
 
     const cantidadDetectada = extraerCantidadYUnidad(textoIngrediente);
 
@@ -102,10 +225,15 @@ function mapearIngredientesConInsumos(receta, insumos) {
         idTemporal: ingrediente.id || String(Date.now()),
         texto_original: textoIngrediente,
         mapeado: false,
+        requiere_seleccion: coincidencias.length > 1,
+        opciones_coincidencia: coincidencias,
         insumo_id: null,
         insumo_nombre: '',
-        unidad_medida: cantidadDetectada.unidad,
-        cantidad_usada: cantidadDetectada.cantidad,
+        unidad_receta: normalizarUnidad(cantidadDetectada.unidad),
+        cantidad_receta: Number(cantidadDetectada.cantidad || 0),
+
+        unidad_medida: normalizarUnidad(cantidadDetectada.unidad),
+        cantidad_usada: Number(cantidadDetectada.cantidad || 0),
         costo_por_unidad: 0,
         costo_calculado: 0,
         disponible_al_momento: 0,
@@ -113,21 +241,39 @@ function mapearIngredientesConInsumos(receta, insumos) {
     }
 
     const costoPorUnidad = Number(insumoEncontrado.costo_por_unidad || 0);
-    const cantidadUsada = Number(cantidadDetectada.cantidad || 0);
 
-    return {
-      idTemporal: ingrediente.id || String(Date.now()),
-      texto_original: textoIngrediente,
-      mapeado: true,
-      insumo_id: insumoEncontrado.id,
-      insumo_nombre: insumoEncontrado.nombre,
-      unidad_medida:
-        cantidadDetectada.unidad || insumoEncontrado.unidad_medida,
-      cantidad_usada: cantidadUsada,
-      costo_por_unidad: costoPorUnidad,
-      costo_calculado: cantidadUsada * costoPorUnidad,
-      disponible_al_momento: Number(insumoEncontrado.cantidad_actual || 0),
-    };
+  const unidadReceta = normalizarUnidad(cantidadDetectada.unidad);
+  const unidadInsumo = normalizarUnidad(insumoEncontrado.unidad_medida);
+
+  const cantidadReceta = Number(cantidadDetectada.cantidad || 0);
+
+  const compatible = sonUnidadesCompatibles(unidadReceta, unidadInsumo);
+
+  const cantidadUsadaEnUnidadInsumo = compatible
+    ? convertirCantidad(cantidadReceta, unidadReceta, unidadInsumo)
+    : cantidadReceta;
+
+  const disponibleAlMomento = Number(insumoEncontrado.cantidad_actual || 0);
+
+  return {
+    idTemporal: ingrediente.id || String(Date.now()),
+    texto_original: textoIngrediente,
+    mapeado: true,
+    insumo_id: insumoEncontrado.id,
+    insumo_nombre: insumoEncontrado.nombre,
+
+    unidad_receta: unidadReceta,
+    cantidad_receta: cantidadReceta,
+
+    unidad_medida: unidadInsumo,
+    cantidad_usada: cantidadUsadaEnUnidadInsumo,
+
+    costo_por_unidad: costoPorUnidad,
+    costo_calculado: cantidadUsadaEnUnidadInsumo * costoPorUnidad,
+    disponible_al_momento: disponibleAlMomento,
+
+    compatible,
+  };
   });
 }
 
@@ -147,6 +293,7 @@ export default function FormularioProduccionScreen({ navigation, route }) {
   const [unidadesPerdidas, setUnidadesPerdidas] = useState('0');
   const [notas, setNotas] = useState('');
   const [fechaProduccion, setFechaProduccion] = useState('');
+  const [selectorInsumoIndex, setSelectorInsumoIndex] = useState(null);
 
   useEffect(() => {
     try {
@@ -212,13 +359,22 @@ export default function FormularioProduccionScreen({ navigation, route }) {
 
   function actualizarCantidadIngrediente(index, valor) {
     const copia = [...ingredientesMapeados];
-    const cantidad = Number(String(valor).replace(',', '.')) || 0;
+
+    const cantidadReceta = Number(String(valor).replace(',', '.')) || 0;
+
+    const cantidadUsadaEnUnidadInsumo = convertirCantidad(
+      cantidadReceta,
+      copia[index].unidad_receta,
+      copia[index].unidad_medida
+    );
 
     copia[index] = {
       ...copia[index],
-      cantidad_usada: valor,
+      cantidad_receta: valor,
+      cantidad_usada: cantidadUsadaEnUnidadInsumo,
       costo_calculado:
-        cantidad * Number(copia[index].costo_por_unidad || 0),
+        cantidadUsadaEnUnidadInsumo *
+        Number(copia[index].costo_por_unidad || 0),
     };
 
     setIngredientesMapeados(copia);
@@ -295,6 +451,69 @@ export default function FormularioProduccionScreen({ navigation, route }) {
     return Math.max(precioSugerido - costoPorUnidad, 0);
   }, [precioSugerido, costoPorUnidad]);
 
+
+  function seleccionarInsumoManual(index, insumo) {
+    const copia = [...ingredientesMapeados];
+    const item = copia[index];
+
+    const cantidadReceta =
+      Number(String(item.cantidad_receta ?? item.cantidad_usada ?? 0).replace(',', '.')) || 0;
+
+    const unidadReceta = normalizarUnidad(
+      item.unidad_receta || item.unidad_medida || ''
+    );
+
+    const unidadInsumo = normalizarUnidad(insumo.unidad_medida);
+
+    const compatible = sonUnidadesCompatibles(unidadReceta, unidadInsumo);
+
+    const cantidadUsadaEnUnidadInsumo = compatible
+      ? convertirCantidad(cantidadReceta, unidadReceta, unidadInsumo)
+      : cantidadReceta;
+
+    const costoPorUnidad = Number(insumo.costo_por_unidad || 0);
+
+    copia[index] = {
+      ...item,
+      mapeado: true,
+      requiere_seleccion: false,
+      opciones_coincidencia: [],
+
+      insumo_id: insumo.id,
+      insumo_nombre: insumo.nombre,
+
+      unidad_receta: unidadReceta,
+      cantidad_receta: cantidadReceta,
+
+      unidad_medida: unidadInsumo,
+      cantidad_usada: cantidadUsadaEnUnidadInsumo,
+
+      costo_por_unidad: costoPorUnidad,
+      costo_calculado: cantidadUsadaEnUnidadInsumo * costoPorUnidad,
+      disponible_al_momento: Number(insumo.cantidad_actual || 0),
+
+      compatible,
+    };
+
+    setIngredientesMapeados(copia);
+    setSelectorInsumoIndex(null);
+  }
+
+  const ingredientesSinMapear = useMemo(() => {
+    return ingredientesMapeados.filter((item) => !item.mapeado);
+  }, [ingredientesMapeados]);
+
+  const ingredientesConStockInsuficiente = useMemo(() => {
+    return ingredientesMapeados.filter((item) => {
+      if (!item.mapeado) return false;
+
+      return (
+        Number(item.cantidad_usada || 0) >
+        Number(item.disponible_al_momento || 0)
+      );
+    });
+  }, [ingredientesMapeados]);
+
   function guardarProduccion() {
     if (!recetaSeleccionada) {
       Alert.alert('Falta información', 'Selecciona una receta para producir.');
@@ -317,6 +536,50 @@ export default function FormularioProduccionScreen({ navigation, route }) {
       return;
     }
 
+    if (ingredientesConStockInsuficiente.length > 0) {
+  const detalle = ingredientesConStockInsuficiente
+    .map((item) => {
+      return `• ${item.insumo_nombre}: necesita ${Number(item.cantidad_usada || 0).toLocaleString('es-CO')} ${item.unidad_medida}, disponible ${Number(item.disponible_al_momento || 0).toLocaleString('es-CO')} ${item.unidad_medida}`;
+    })
+    .join('\n');
+
+  Alert.alert(
+    'Stock insuficiente',
+    `No puedes guardar esta producción porque hay insumos sin stock suficiente:\n\n${detalle}`
+  );
+
+  return;
+}
+
+if (ingredientesSinMapear.length > 0) {
+  const detalle = ingredientesSinMapear
+    .map((item) => `• ${item.texto_original}`)
+    .join('\n');
+
+  Alert.alert(
+    'Ingredientes sin insumo',
+    `Hay ingredientes que no están vinculados a ningún insumo:\n\n${detalle}\n\nSi guardas así, no se descontarán del inventario ni sumarán costo. ¿Quieres guardar de todas formas?`,
+    [
+      {
+        text: 'Cancelar',
+        style: 'cancel',
+      },
+      {
+        text: 'Guardar igual',
+        style: 'destructive',
+        onPress: () => guardarProduccionConfirmada(),
+      },
+    ]
+  );
+
+  return;
+}
+
+guardarProduccionConfirmada();
+
+  }
+
+  function guardarProduccionConfirmada() {
     const insumosUsados = ingredientesMapeados
       .filter((item) => item.mapeado)
       .map((item) => ({
@@ -329,6 +592,9 @@ export default function FormularioProduccionScreen({ navigation, route }) {
         costo_calculado: Number(item.costo_calculado || 0),
         disponible_al_momento: Number(item.disponible_al_momento || 0),
       }));
+
+    const vidaUtilDias = Number(recetaSeleccionada.vida_util_dias || 0);
+    const fechaVencimiento = calcularFechaVencimientoLocal(vidaUtilDias);
 
     const payloadProduccion = {
       receta_id: recetaSeleccionada.id,
@@ -351,20 +617,19 @@ export default function FormularioProduccionScreen({ navigation, route }) {
 
       precio_sugerido_personalizado: precioSugerido,
 
+      vida_util_dias: vidaUtilDias,
+      fecha_vencimiento: fechaVencimiento,
+      conservacion: recetaSeleccionada.conservacion || '',
+      tipo_vida_util: recetaSeleccionada.tipo_vida_util || '',
+
       notas,
       estado: 'calculada',
     };
 
     if (modoEdicion) {
-      actualizarProduccion(
-        produccionId,
-        payloadProduccion
-      );
+      actualizarProduccion(produccionId, payloadProduccion);
     } else {
-      crearProduccionConInsumos(
-        payloadProduccion,
-        insumosUsados
-      );
+      crearProduccionConInsumos(payloadProduccion, insumosUsados);
     }
 
     Alert.alert(
@@ -531,9 +796,30 @@ export default function FormularioProduccionScreen({ navigation, route }) {
                             Mapeado con: {item.insumo_nombre}
                           </Text>
                         ) : (
-                          <Text style={styles.notMappedText}>
-                            No se encontró un insumo coincidente
-                          </Text>
+                          <>
+                            <Text style={styles.notMappedText}>
+                              {item.requiere_seleccion
+                                ? 'Se encontraron varias coincidencias'
+                                : 'No se encontró un insumo coincidente'}
+                            </Text>
+
+                            {item.requiere_seleccion ? (
+                              <Pressable
+                                style={styles.selectInsumoButton}
+                                onPress={() => {
+                                  setSelectorInsumoIndex(
+                                    selectorInsumoIndex === index ? null : index
+                                  );
+                                }}
+                              >
+                                <Text style={styles.selectInsumoButtonText}>
+                                  {selectorInsumoIndex === index
+                                    ? 'Ocultar opciones'
+                                    : 'Elegir insumo'}
+                                </Text>
+                              </Pressable>
+                            ) : null}
+                          </>
                         )}
                       </View>
 
@@ -548,15 +834,48 @@ export default function FormularioProduccionScreen({ navigation, route }) {
                       />
                     </View>
 
+                    {item.requiere_seleccion && selectorInsumoIndex === index ? (
+                      <View style={styles.inlineSelectorBox}>
+                        <Text style={styles.inlineSelectorTitle}>
+                          Elige el insumo correcto
+                        </Text>
+
+                        {(item.opciones_coincidencia || []).map((insumo) => (
+                          <Pressable
+                            key={insumo.id}
+                            style={styles.inlineOption}
+                            onPress={() => seleccionarInsumoManual(index, insumo)}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.inlineOptionTitle}>
+                                {insumo.nombre}
+                              </Text>
+
+                              <Text style={styles.inlineOptionMeta}>
+                                Disponible: {Number(insumo.cantidad_actual || 0).toLocaleString('es-CO')}{' '}
+                                {insumo.unidad_medida} · Costo: {COP.format(insumo.costo_por_unidad || 0)}
+                              </Text>
+                            </View>
+
+                            <Ionicons
+                              name="chevron-forward"
+                              size={20}
+                              color="#8B5E4E"
+                            />
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+
                     {item.mapeado && (
                       <>
                         <View style={styles.row}>
                           <Input
                             half
                             label={`Cantidad usada (${
-                              item.unidad_medida || 'unidad'
+                              item.unidad_receta || item.unidad_medida || 'unidad'
                             })`}
-                            value={String(item.cantidad_usada || '')}
+                            value={String(item.cantidad_receta ?? '')}
                             onChangeText={(valor) =>
                               actualizarCantidadIngrediente(index, valor)
                             }
@@ -573,10 +892,8 @@ export default function FormularioProduccionScreen({ navigation, route }) {
                         </View>
 
                         <Text style={styles.helperText}>
-                          Disponible:{' '}
-                          {Number(
-                            item.disponible_al_momento || 0
-                          ).toLocaleString('es-CO')}{' '}
+                          Disponible en inventario:{' '}
+                          {Number(item.disponible_al_momento || 0).toLocaleString('es-CO')}{' '}
                           {item.unidad_medida}
                         </Text>
                       </>
@@ -675,6 +992,7 @@ export default function FormularioProduccionScreen({ navigation, route }) {
             </Pressable>
           </>
         )}
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -975,4 +1293,137 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
+
+  selectInsumoButton: {
+  marginTop: 10,
+  alignSelf: 'flex-start',
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  borderRadius: 12,
+  backgroundColor: '#8B5E4E',
+},
+
+selectInsumoButtonText: {
+  color: '#FFFFFF',
+  fontSize: 12,
+  fontWeight: '900',
+},
+
+modalOverlay: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.35)',
+  justifyContent: 'flex-end',
+  padding: 0,
+},
+
+modalCard: {
+  width: '100%',
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
+  backgroundColor: '#FFFFFF',
+  padding: 22,
+  paddingBottom: 28,
+},
+
+modalHandle: {
+  alignSelf: 'center',
+  width: 42,
+  height: 5,
+  borderRadius: 999,
+  backgroundColor: '#E8DCD3',
+  marginBottom: 16,
+},
+
+modalTitle: {
+  fontSize: 20,
+  fontWeight: '900',
+  color: '#3B2A24',
+},
+
+modalSubtitle: {
+  marginTop: 4,
+  marginBottom: 14,
+  color: '#7A6F68',
+  fontSize: 13,
+},
+
+modalOption: {
+  padding: 14,
+  borderRadius: 16,
+  backgroundColor: '#FFF8F3',
+  borderWidth: 1,
+  borderColor: '#E8DCD3',
+  marginBottom: 10,
+},
+
+modalOptionTitle: {
+  fontSize: 15,
+  fontWeight: '900',
+  color: '#3B2A24',
+},
+
+modalOptionMeta: {
+  marginTop: 4,
+  fontSize: 12,
+  color: '#7A6F68',
+},
+
+modalCloseButton: {
+  marginTop: 6,
+  padding: 12,
+  borderRadius: 14,
+  alignItems: 'center',
+  backgroundColor: '#F7EDE6',
+},
+
+modalCloseText: {
+  color: '#8B5E4E',
+  fontWeight: '900',
+},
+
+inlineSelectorBox: {
+  marginTop: 4,
+  marginBottom: 10,
+  padding: 12,
+  borderRadius: 16,
+  backgroundColor: '#FFFFFF',
+  borderWidth: 1,
+  borderColor: '#E8DCD3',
+},
+
+inlineSelectorTitle: {
+  fontSize: 13,
+  fontWeight: '900',
+  color: '#3B2A24',
+  marginBottom: 8,
+},
+
+inlineOption: {
+  padding: 12,
+  borderRadius: 14,
+  backgroundColor: '#FFF8F3',
+  borderWidth: 1,
+  borderColor: '#E8DCD3',
+  marginBottom: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+inlineOptionTitle: {
+  fontSize: 14,
+  fontWeight: '900',
+  color: '#3B2A24',
+},
+
+inlineOptionMeta: {
+  marginTop: 3,
+  fontSize: 12,
+  color: '#7A6F68',
+},
+
 });

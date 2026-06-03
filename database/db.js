@@ -175,6 +175,30 @@ function asegurarTablaProducciones() {
   'INTEGER DEFAULT 0'
 );
 
+  agregarColumnaSiNoExiste(
+    'producciones',
+    'vida_util_dias',
+    'INTEGER DEFAULT 0'
+  );
+
+  agregarColumnaSiNoExiste(
+    'producciones',
+    'fecha_vencimiento',
+    'TEXT'
+  );
+
+  agregarColumnaSiNoExiste(
+    'producciones',
+    'conservacion',
+    'TEXT'
+  );
+
+  agregarColumnaSiNoExiste(
+    'producciones',
+    'tipo_vida_util',
+    'TEXT'
+  );
+
   db.execSync(`
     CREATE TABLE IF NOT EXISTS produccion_insumos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -404,6 +428,24 @@ export function initDatabase() {
     'TEXT'
   );
 
+    agregarColumnaSiNoExiste(
+    'recetas',
+    'vida_util_dias',
+    'INTEGER DEFAULT 0'
+  );
+
+  agregarColumnaSiNoExiste(
+    'recetas',
+    'conservacion',
+    'TEXT'
+  );
+
+  agregarColumnaSiNoExiste(
+    'recetas',
+    'tipo_vida_util',
+    'TEXT'
+  );
+
   agregarColumnaSiNoExiste(
     'recetas',
     'updated_at',
@@ -470,9 +512,12 @@ export function crearReceta(receta) {
       equipo_cocina,
       foto_uri,
       video_url,
+      vida_util_dias,
+      conservacion,
+      tipo_vida_util,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
     `,
     [
       receta.nombre,
@@ -490,6 +535,9 @@ export function crearReceta(receta) {
       receta.equipo_cocina,
       receta.foto_uri,
       receta.video_url,
+      receta.vida_util_dias,
+      receta.conservacion,
+      receta.tipo_vida_util,
     ]
   );
 }
@@ -526,6 +574,9 @@ export function actualizarReceta(id, receta) {
       equipo_cocina = ?,
       foto_uri = ?,
       video_url = ?,
+      vida_util_dias = ?,
+      conservacion = ?,
+      tipo_vida_util = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?;
     `,
@@ -545,6 +596,9 @@ export function actualizarReceta(id, receta) {
       receta.equipo_cocina,
       receta.foto_uri,
       receta.video_url,
+      receta.vida_util_dias,
+      receta.conservacion,
+      receta.tipo_vida_util,
       id,
     ]
   );
@@ -867,6 +921,29 @@ function calcularPrecioSugeridoPersonalizado(
 }
 
 // ======================================================
+// FECHA VENCIMIENTO
+// ======================================================
+
+function calcularFechaVencimiento(fechaBase, vidaUtilDias) {
+  const dias = Number(vidaUtilDias || 0);
+
+  if (dias <= 0) return '';
+
+  const base = fechaBase ? new Date(String(fechaBase).replace(' ', 'T')) : new Date();
+
+  if (Number.isNaN(base.getTime())) return '';
+
+  base.setDate(base.getDate() + dias);
+
+  const dia = String(base.getDate()).padStart(2, '0');
+  const mes = String(base.getMonth() + 1).padStart(2, '0');
+  const anio = base.getFullYear();
+
+  return `${dia}/${mes}/${anio}`;
+}
+
+
+// ======================================================
 // PRODUCCIÓN - CREAR PRODUCCIÓN
 // ======================================================
 
@@ -923,6 +1000,11 @@ export function crearProduccion(produccion) {
       margenPorcentaje
     );
 
+  const vidaUtilDias = Number(produccion.vida_util_dias || 0);
+  const fechaVencimiento =
+    produccion.fecha_vencimiento ||
+    calcularFechaVencimiento(new Date(), vidaUtilDias);
+
   const resultado = db.runSync(
     `
     INSERT INTO producciones (
@@ -944,11 +1026,15 @@ export function crearProduccion(produccion) {
       precio_sugerido_50,
       margen_porcentaje,
       precio_sugerido_personalizado,
+      vida_util_dias,
+      fecha_vencimiento,
+      conservacion,
+      tipo_vida_util,
       notas,
       estado,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
     `,
     [
       produccion.receta_id,
@@ -969,6 +1055,10 @@ export function crearProduccion(produccion) {
       precioSugerido50,
       margenPorcentaje,
       precioSugeridoPersonalizado,
+      vidaUtilDias,
+      fechaVencimiento,
+      produccion.conservacion || '',
+      produccion.tipo_vida_util || '',
       produccion.notas || '',
       produccion.estado || 'calculada',
     ]
@@ -1206,6 +1296,11 @@ export function actualizarProduccion(id, produccion) {
       margenPorcentaje
     );
 
+  const vidaUtilDias = Number(produccion.vida_util_dias || 0);
+  const fechaVencimiento =
+    produccion.fecha_vencimiento ||
+    calcularFechaVencimiento(new Date(), vidaUtilDias);
+
   db.runSync(
     `
     UPDATE producciones
@@ -1226,6 +1321,10 @@ export function actualizarProduccion(id, produccion) {
       precio_sugerido_50 = ?,
       margen_porcentaje = ?,
       precio_sugerido_personalizado = ?,
+      vida_util_dias = ?,
+      fecha_vencimiento = ?,
+      conservacion = ?,
+      tipo_vida_util = ?,
       notas = ?,
       estado = ?,
       updated_at = CURRENT_TIMESTAMP
@@ -1248,6 +1347,10 @@ export function actualizarProduccion(id, produccion) {
       precioSugerido50,
       margenPorcentaje,
       precioSugeridoPersonalizado,
+      vidaUtilDias,
+      fechaVencimiento,
+      produccion.conservacion || '',
+      produccion.tipo_vida_util || '',
       produccion.notas || '',
       produccion.estado || 'calculada',
       id,
