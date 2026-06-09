@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import {
-  initDatabase,
   obtenerRecetas,
   alternarFavoritaReceta,
 } from '../database/db';
@@ -19,7 +18,6 @@ export default function RecetasScreen({ navigation }) {
   const [recetas, setRecetas] = useState([]);
 
   useEffect(() => {
-    initDatabase();
     cargarRecetas();
 
     const unsubscribe = navigation.addListener('focus', () => {

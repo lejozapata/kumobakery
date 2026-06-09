@@ -1364,6 +1364,64 @@ export function actualizarProduccion(id, produccion) {
 
 export function eliminarProduccion(id) {
   asegurarTablaProducciones();
+  asegurarTablaInsumos();
+
+  const insumosUsados = db.getAllSync(
+    `
+    SELECT
+      insumo_id,
+      insumo_nombre,
+      cantidad_usada,
+      costo_por_unidad
+    FROM produccion_insumos
+    WHERE produccion_id = ?;
+    `,
+    [id]
+  );
+
+  insumosUsados.forEach((item) => {
+    const insumoId = Number(item.insumo_id || 0);
+    const cantidadUsada = Number(item.cantidad_usada || 0);
+
+    if (insumoId > 0 && cantidadUsada > 0) {
+      db.runSync(
+        `
+        UPDATE insumos
+        SET
+          cantidad_actual = cantidad_actual + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?;
+        `,
+        [cantidadUsada, insumoId]
+      );
+
+      db.runSync(
+        `
+        INSERT INTO movimientos_inventario (
+          tipo_origen,
+          origen_id,
+          tipo_movimiento,
+          referencia_tipo,
+          referencia_id,
+          descripcion,
+          cantidad,
+          costo_unitario
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+        `,
+        [
+          'produccion_eliminada',
+          id,
+          'entrada',
+          'insumo',
+          insumoId,
+          `Devolución por eliminación de producción: ${item.insumo_nombre || ''}`,
+          cantidadUsada,
+          Number(item.costo_por_unidad || 0),
+        ]
+      );
+    }
+  });
 
   db.runSync(
     `

@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "SaraReposteria",
-    "slug": "SaraReposteria",
+    "name": "KUMO Bakery",
+    "slug": "kumo-bakery",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/Kumo_bakery.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/Kumo_bakery.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -16,19 +16,25 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.kumobakery.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/kumo_logo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/Kumo_bakery.png"
     },
     "plugins": [
       "expo-sqlite",
       "@react-native-community/datetimepicker",
       "expo-asset"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1dfc3795-be53-43dd-856d-22597d86eb86"
+      }
+    }
   }
 }

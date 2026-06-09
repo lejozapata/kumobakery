@@ -1,5 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React, { useEffect } from 'react';
 
 import HomeScreen from './screens/HomeScreen';
 
@@ -24,10 +25,19 @@ import FinanzasScreen from './screens/FinanzasScreen';
 import MovimientosInventarioScreen from './screens/MovimientosInventarioScreen';
 import ComprobantesScreen from './screens/ComprobantesScreen';
 import PedidosCalendarioScreen from './screens/PedidosCalendarioScreen';
+import CopiasExportacionesScreen from './screens/CopiasExportacionesScreen';
+
+// inicializar BD
+import { initDatabase } from './database/db';
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  
+  useEffect(() => {
+    initDatabase();
+  }, []);
+
   return (
     <NavigationContainer>
       <Stack.Navigator>
@@ -127,6 +137,12 @@ export default function App() {
           options={{
             title: 'Calendario',
           }}
+        />
+
+        <Stack.Screen
+          name="CopiasExportaciones"
+          component={CopiasExportacionesScreen}
+          options={{ title: 'Copias y exportaciones' }}
         />
 
       </Stack.Navigator>

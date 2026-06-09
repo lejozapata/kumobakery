@@ -62,6 +62,13 @@ export default function MasOpcionesScreen({ navigation }) {
           description="Entradas y salidas de insumos y producción."
           onPress={() => navigation.navigate('MovimientosInventario')}
         />
+
+        <MenuItem
+          icon="cloud-upload-outline"
+          title="Copias y exportaciones"
+          description="Respaldos de base de datos y exportación de recetas."
+          onPress={() => navigation.navigate('CopiasExportaciones')}
+        />
       </ScrollView>
     </SafeAreaView>
   );
